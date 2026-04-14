@@ -8,6 +8,10 @@ import { addDays } from "date-fns";
 
 export const maxDuration = 300; // 5 minutes for Vercel Pro
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function GET(request: NextRequest) {
   // Verify cron secret in production
   const authHeader = request.headers.get("authorization");
@@ -27,27 +31,49 @@ export async function GET(request: NextRequest) {
     const weekUuid = await rotateWeeks(nextMonday);
     const { start_date } = getWeekRange(nextMonday);
 
-    // 2. Generate content in parallel
-    const results = await Promise.allSettled([
-      generateAndStoreMeetings(weekUuid, start_date),
-      generateAndStoreWatchtower(weekUuid, start_date),
-      generateAndStoreSalidas(weekUuid),
-    ]);
+    // 2. Generate content SEQUENTIALLY to avoid rate limits on free tier
+    const errors: string[] = [];
 
-    const summary = {
-      weekId: weekUuid,
-      startDate: start_date,
-      reuniones: results[0].status,
-      atalayas: results[1].status,
-      salidas: results[2].status,
-      errors: results
-        .filter((r) => r.status === "rejected")
-        .map((r) => (r as PromiseRejectedResult).reason?.message || "Unknown"),
-    };
+    let reunionesStatus = "pending";
+    try {
+      await generateAndStoreMeetings(weekUuid, start_date);
+      reunionesStatus = "fulfilled";
+    } catch (e) {
+      reunionesStatus = "rejected";
+      errors.push(`reuniones: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // Wait between generations to respect rate limits
+    await sleep(10000);
+
+    let atalayasStatus = "pending";
+    try {
+      await generateAndStoreWatchtower(weekUuid, start_date);
+      atalayasStatus = "fulfilled";
+    } catch (e) {
+      atalayasStatus = "rejected";
+      errors.push(`atalayas: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    await sleep(10000);
+
+    let salidasStatus = "pending";
+    try {
+      await generateAndStoreSalidas(weekUuid);
+      salidasStatus = "fulfilled";
+    } catch (e) {
+      salidasStatus = "rejected";
+      errors.push(`salidas: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     return NextResponse.json({
       success: true,
-      ...summary,
+      weekId: weekUuid,
+      startDate: start_date,
+      reuniones: reunionesStatus,
+      atalayas: atalayasStatus,
+      salidas: salidasStatus,
+      errors,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
