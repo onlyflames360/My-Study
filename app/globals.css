@@ -1,19 +1,25 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --primary: #4f46e5;
-  --primary-light: #818cf8;
-  --primary-dark: #3730a3;
-  --card: #ffffff;
-  --card-border: #e2e8f0;
-  --muted: #64748b;
-  --accent: #f1f5f9;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --bible: #fef3c7;
-  --bible-border: #f59e0b;
+  /* JW Library warm cream palette */
+  --background: #F5F0E8;
+  --foreground: #1A1A2E;
+  --primary: #1B3C4A;
+  --primary-light: #2D6B80;
+  --primary-dark: #0F2535;
+  --card: #FFFFFF;
+  --card-border: #E5DDD0;
+  --muted: #8A8078;
+  --accent: #EDE8DF;
+  --success: #3D8A57;
+  --warning: #C8A44A;
+  --bible: #FEF8EE;
+  --bible-border: #C8A44A;
+
+  /* JW meeting section strip colors */
+  --section-treasures: #7B5C00;
+  --section-teaching: #1B5E20;
+  --section-christian: #4A148C;
 }
 
 @theme inline {

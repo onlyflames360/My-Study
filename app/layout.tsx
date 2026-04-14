@@ -32,10 +32,11 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <Header />
         <TabNavigation />
-        <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6">
+        {/* pb-20 on mobile to clear the fixed bottom nav */}
+        <main className="flex-1 max-w-5xl mx-auto w-full px-4 py-6 pb-24 sm:pb-6">
           {children}
         </main>
-        <footer className="text-center text-xs text-muted py-4 border-t border-card-border">
+        <footer className="hidden sm:block text-center text-xs text-muted py-4 border-t border-card-border">
           My Study &mdash; Preparación personal de estudio semanal
         </footer>
       </body>

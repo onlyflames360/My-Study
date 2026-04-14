@@ -8,15 +8,16 @@ import EditableContent from "@/components/EditableContent";
 import EmptyState from "@/components/EmptyState";
 import type { Reunion } from "@/lib/types";
 
-const sectionColors: Record<string, string> = {
-  "TESOROS DE LA BIBLIA": "bg-amber-50 border-amber-400",
-  "BUSQUEMOS PERLAS ESCONDIDAS": "bg-amber-50 border-amber-400",
-  "LECTURA DE LA BIBLIA": "bg-amber-50 border-amber-400",
-  "SEAMOS MEJORES MAESTROS": "bg-green-50 border-green-400",
-  "NUESTRA VIDA CRISTIANA": "bg-purple-50 border-purple-400",
-  "ESTUDIO BÍBLICO DE CONGREGACIÓN": "bg-purple-50 border-purple-400",
-  "CANCIÓN Y ORACIÓN": "bg-slate-50 border-slate-400",
-  "CANCIÓN FINAL Y ORACIÓN": "bg-slate-50 border-slate-400",
+// Colors match official JW meeting guide section strips
+const sectionColors: Record<string, { bg: string; border: string; label: string }> = {
+  "TESOROS DE LA BIBLIA":            { bg: "bg-amber-50",   border: "border-amber-600",   label: "text-amber-800" },
+  "BUSQUEMOS PERLAS ESCONDIDAS":     { bg: "bg-amber-50",   border: "border-amber-600",   label: "text-amber-800" },
+  "LECTURA DE LA BIBLIA":            { bg: "bg-amber-50",   border: "border-amber-600",   label: "text-amber-800" },
+  "SEAMOS MEJORES MAESTROS":         { bg: "bg-green-50",   border: "border-green-700",   label: "text-green-900" },
+  "NUESTRA VIDA CRISTIANA":          { bg: "bg-purple-50",  border: "border-purple-700",  label: "text-purple-900" },
+  "ESTUDIO BÍBLICO DE CONGREGACIÓN": { bg: "bg-purple-50",  border: "border-purple-700",  label: "text-purple-900" },
+  "CANCIÓN Y ORACIÓN":               { bg: "bg-slate-50",   border: "border-slate-400",   label: "text-slate-700" },
+  "CANCIÓN FINAL Y ORACIÓN":         { bg: "bg-slate-50",   border: "border-slate-400",   label: "text-slate-700" },
 };
 
 export default function ReunionesPage() {
@@ -88,27 +89,30 @@ export default function ReunionesPage() {
       ) : (
         <div className="space-y-4">
           {Object.entries(grouped).map(([section, parts]) => {
-            const colorClass =
-              sectionColors[section] || "bg-slate-50 border-slate-300";
+            const colors = sectionColors[section] ?? {
+              bg: "bg-slate-50",
+              border: "border-slate-400",
+              label: "text-slate-700",
+            };
             return (
               <div
                 key={section}
-                className={`border-l-4 rounded-r-xl overflow-hidden ${colorClass}`}
+                className="rounded-xl overflow-hidden shadow-sm border border-card-border"
               >
-                <div className="px-6 py-3">
-                  <h3 className="font-bold text-sm uppercase tracking-wider text-foreground">
+                {/* Section header strip */}
+                <div className={`border-l-4 px-5 py-2.5 ${colors.bg} ${colors.border}`}>
+                  <h3 className={`font-bold text-xs uppercase tracking-widest ${colors.label}`}>
                     {section}
                   </h3>
                 </div>
 
-                <div className="bg-card">
+                <div className="bg-card divide-y divide-card-border">
                   {parts.map((part) => (
-                    <div
-                      key={part.id}
-                      className="px-6 py-4 border-t border-card-border"
-                    >
+                    <div key={part.id} className="px-5 py-4">
                       {part.title && (
-                        <h4 className="font-semibold mb-2">{part.title}</h4>
+                        <h4 className="font-semibold text-sm mb-2 text-foreground">
+                          {part.title}
+                        </h4>
                       )}
 
                       {part.content && (

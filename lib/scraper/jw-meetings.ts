@@ -1,4 +1,5 @@
 import { generateWithClaude } from "../claude";
+import { getWeekSchedule } from "../schedule/mwb-2026";
 import type { BibleText } from "../types";
 
 export interface MeetingPart {
@@ -26,7 +27,20 @@ export interface MeetingPart {
 export async function generateMeetingContent(
   startDate: string
 ): Promise<MeetingPart[]> {
+  const schedule = getWeekSchedule(startDate);
+  const bibleReading = schedule?.bibleReading ?? null;
+
+  const lecturaTitle = bibleReading
+    ? `Lectura de la Biblia (${bibleReading})`
+    : "Lectura de la Biblia (ver programa de la semana)";
+
+  const readingInstruction = bibleReading
+    ? `La lectura bíblica OFICIAL de esta semana es: ${bibleReading}.`
+    : "Usa la lectura bíblica asignada para esta semana.";
+
   const prompt = `Genera el programa COMPLETO de la reunión "Vida y ministerio cristiano" para la semana del ${startDate}, siguiendo la estructura EXACTA de la Guía de Actividades de jw.org.
+
+LECTURA BÍBLICA DE ESTA SEMANA: ${bibleReading ?? "(ver Guía de Actividades)"}
 
 Devuelve SOLO un JSON array con EXACTAMENTE esta estructura:
 
@@ -40,12 +54,12 @@ Devuelve SOLO un JSON array con EXACTAMENTE esta estructura:
   {
     "section": "TESOROS DE LA BIBLIA",
     "title": "Busquemos perlas escondidas (10 min)",
-    "content": "PARTE A — PREGUNTA:\\n[Escribir la pregunta]\\n\\nRESPUESTA:\\n[Respuesta clara y desarrollada basada en los textos bíblicos]\\n\\nPARTE B — ENSEÑANZAS DE LA LECTURA BÍBLICA SEMANAL:\\n\\n1. [Texto bíblico 1] — [Enseñanza y aplicación práctica]\\n\\n2. [Texto bíblico 2] — [Enseñanza y aplicación práctica]\\n\\n3. [Texto bíblico 3] — [Enseñanza y aplicación práctica]",
+    "content": "PARTE A — PREGUNTA:\\n[Escribir la pregunta]\\n\\nRESPUESTA:\\n[Respuesta clara y desarrollada basada en los textos bíblicos]\\n\\nPARTE B — ENSEÑANZAS DE LA LECTURA BÍBLICA SEMANAL (${bibleReading ?? "lectura de la semana"}):\\n\\n1. [Texto bíblico 1 de ${bibleReading ?? "la lectura"}] — [Enseñanza y aplicación práctica]\\n\\n2. [Texto bíblico 2 de ${bibleReading ?? "la lectura"}] — [Enseñanza y aplicación práctica]\\n\\n3. [Texto bíblico 3 de ${bibleReading ?? "la lectura"}] — [Enseñanza y aplicación práctica]",
     "bible_texts": [{"reference": "...", "text": "Texto completo", "translation": "NWT"}, {"reference": "...", "text": "Texto completo", "translation": "NWT"}, {"reference": "...", "text": "Texto completo", "translation": "NWT"}]
   },
   {
     "section": "TESOROS DE LA BIBLIA",
-    "title": "Lectura de la Biblia ([referencia bíblica])",
+    "title": "${lecturaTitle}",
     "content": "",
     "bible_texts": []
   },
@@ -82,16 +96,18 @@ Devuelve SOLO un JSON array con EXACTAMENTE esta estructura:
 ]
 
 REGLAS OBLIGATORIAS:
+- ${readingInstruction}
+- La sección "Lectura de la Biblia" DEBE tener el título EXACTO: "${lecturaTitle}" y content vacío
+- Perlas escondidas Parte B DEBE basarse en versículos de ${bibleReading ?? "la lectura bíblica de la semana"} — NO uses otros libros bíblicos
+- NO inventes una lectura bíblica diferente. La lectura es: ${bibleReading ?? "la asignada para esta semana"}
 - Incluye los textos bíblicos COMPLETOS (no solo la referencia)
 - El discurso de Tesoros debe ser extenso (~1300 palabras) para cubrir 10 minutos
-- Perlas escondidas DEBE tener Parte A (pregunta+respuesta) Y Parte B (3 enseñanzas de la lectura bíblica semanal)
-- La Lectura de la Biblia solo muestra el título, content vacío
 - Las asignaciones de Seamos Mejores Maestros deben tener guion listo para representar
-- NO copies texto literal de publicaciones
+- NO copies texto literal de publicaciones con derechos de autor
 - Responde SOLO con el JSON array`;
 
   const result = await generateWithClaude(
-    "Eres un asistente de estudio bíblico experto. Genera contenido que siga EXACTAMENTE la estructura de la reunión 'Vida y ministerio cristiano' de los Testigos de Jehová. El contenido debe ser original, claro, respetuoso y basado en la Biblia. La pestaña Reuniones debe seguir exactamente la estructura de la Guía de Actividades de jw.org, usando únicamente la semana actual.",
+    "Eres un asistente de estudio bíblico experto. Genera contenido que siga EXACTAMENTE la estructura de la reunión 'Vida y ministerio cristiano' de los Testigos de Jehová. El contenido debe ser original, claro, respetuoso y basado en la Biblia. La lectura bíblica de la semana está indicada en el prompt — úsala exactamente, no la inventes.",
     prompt
   );
 
