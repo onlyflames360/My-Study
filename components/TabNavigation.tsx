@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Mic, MapPin, Users, BookOpen } from "lucide-react";
+import { Mic, MapPin, Users, BookOpen, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -10,6 +10,7 @@ const tabs = [
   { href: "/salidas", label: "Salidas", icon: MapPin },
   { href: "/reuniones", label: "Reuniones", icon: Users },
   { href: "/atalayas", label: "Atalayas", icon: BookOpen },
+  { href: "/familia", label: "Familia", icon: Home },
 ];
 
 export default function TabNavigation() {

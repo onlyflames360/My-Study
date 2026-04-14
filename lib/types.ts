@@ -69,3 +69,21 @@ export interface Atalaya {
   created_at: string;
   updated_at: string;
 }
+
+export type FamiliaMode = "familiar" | "adultos";
+
+export interface EstudioFamilia {
+  id: string;
+  week_id: string;
+  mode: FamiliaMode;
+  tema: string | null;
+  introduccion: string | null;
+  lectura_biblica: string | null;
+  ensenanza: string | null;
+  aplicacion: string | null;
+  preguntas: string | null;
+  objetivo_espiritual: string | null;
+  bible_texts: BibleText[];
+  created_at: string;
+  updated_at: string;
+}

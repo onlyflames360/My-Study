@@ -3,6 +3,7 @@ import { rotateWeeks } from "@/lib/weeks/manager";
 import { generateAndStoreMeetings } from "@/lib/generators/reuniones";
 import { generateAndStoreWatchtower } from "@/lib/generators/atalayas";
 import { generateAndStoreSalidas } from "@/lib/generators/salidas-store";
+import { generateAndStoreFamilia } from "@/lib/generators/familia";
 import { getWeekRange } from "@/lib/weeks/manager";
 import { addDays } from "date-fns";
 
@@ -66,12 +67,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, step: "salidas", weekId: weekUuid });
     }
 
+    if (step === "familia") {
+      await generateAndStoreFamilia(weekUuid, start_date);
+      return NextResponse.json({ success: true, step: "familia", weekId: weekUuid });
+    }
+
     if (step === "all") {
       const errors: string[] = [];
       for (const gen of [
         { name: "reuniones", fn: () => generateAndStoreMeetings(weekUuid, start_date) },
         { name: "atalayas", fn: () => generateAndStoreWatchtower(weekUuid, start_date) },
         { name: "salidas", fn: () => generateAndStoreSalidas(weekUuid) },
+        { name: "familia", fn: () => generateAndStoreFamilia(weekUuid, start_date) },
       ]) {
         try {
           await gen.fn();
