@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  /* JW Library warm cream palette */
+  --background: #F5F0E8;
+  --foreground: #1A1A2E;
+  --primary: #1B3C4A;
+  --primary-light: #2D6B80;
+  --primary-dark: #0F2535;
+  --card: #FFFFFF;
+  --card-border: #E5DDD0;
+  --muted: #8A8078;
+  --accent: #EDE8DF;
+  --success: #3D8A57;
+  --warning: #C8A44A;
+  --bible: #FEF8EE;
+  --bible-border: #C8A44A;
+
+  /* JW meeting section strip colors */
+  --section-treasures: #7B5C00;
+  --section-teaching: #1B5E20;
+  --section-christian: #4A148C;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-bible: var(--bible);
+  --color-bible-border: var(--bible-border);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--accent);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 3px;
+}
