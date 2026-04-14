@@ -1,20 +1,20 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export async function generateWithClaude(
   systemPrompt: string,
   userPrompt: string
 ): Promise<string> {
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-lite",
-    systemInstruction: systemPrompt,
-    generationConfig: {
-      maxOutputTokens: 4096,
-      temperature: 0.7,
-    },
+  const completion = await groq.chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    max_tokens: 4096,
+    temperature: 0.7,
   });
 
-  const result = await model.generateContent(userPrompt);
-  return result.response.text();
+  return completion.choices[0]?.message?.content || "";
 }
