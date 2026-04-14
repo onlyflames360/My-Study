@@ -1,5 +1,4 @@
-import { generateWithClaude } from "../claude";
-import { getWeekSchedule } from "../schedule/mwb-2026";
+import { getISOWeek, getISOWeekYear, parseISO } from "date-fns";
 import type { BibleText } from "../types";
 
 export interface MeetingPart {
@@ -10,126 +9,200 @@ export interface MeetingPart {
   bible_texts: BibleText[];
 }
 
+const WOL_BASE = "https://wol.jw.org";
+const FETCH_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "es-ES,es;q=0.9",
+};
+
+/** Remove all HTML tags and normalize whitespace */
+function stripTags(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#\d+;/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Fetch the WOL meeting document path for a given week */
+async function getMeetingDocPath(
+  year: number,
+  isoWeek: number
+): Promise<string | null> {
+  try {
+    const url = `${WOL_BASE}/es/wol/meetings/r4/lp-s/${year}/${isoWeek}`;
+    const res = await fetch(url, { headers: FETCH_HEADERS });
+    if (!res.ok) return null;
+    const html = await res.text();
+    // First /wol/d/ link on the meetings page is the meeting workbook
+    const m = html.match(/href="(\/es\/wol\/d\/r4\/lp-s\/\d+)"/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch the full HTML of the meeting document */
+async function fetchDocHtml(docPath: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${WOL_BASE}${docPath}`, {
+      headers: FETCH_HEADERS,
+    });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Generate meeting content following the EXACT structure of
- * "Vida y ministerio cristiano" from jw.org's activity guide.
+ * Extract Bible references from an HTML snippet.
+ * WOL marks them as <a class="b" ...>Is 54:13</a>
+ */
+function extractBibleRefs(html: string): BibleText[] {
+  const refs: BibleText[] = [];
+  const seen = new Set<string>();
+  const regex = /<a[^>]+class="b"[^>]*>([\s\S]*?)<\/a>/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(html)) !== null) {
+    const ref = stripTags(m[1]).trim();
+    if (ref && !seen.has(ref)) {
+      seen.add(ref);
+      refs.push({ reference: ref, text: "", translation: "NWT" });
+    }
+  }
+  return refs;
+}
+
+/**
+ * Parse the WOL meeting HTML into structured MeetingPart[].
  *
- * Structure:
- * 1. TESOROS DE LA BIBLIA
- *    - Discurso (10 min) - full speech with intro/body/conclusion
- *    - Perlas escondidas - Part A (answer question) + Part B (3 teachings from Bible reading)
- *    - Lectura de la Biblia - title only, no content
- * 2. SEAMOS MEJORES MAESTROS
- *    - Assignments/role-plays with structured scripts
- * 3. NUESTRA VIDA CRISTIANA
- *    - Talks with Q&A if applicable
+ * Section heading structure in WOL HTML:
+ *   <h2 ...><strong>TESOROS DE LA BIBLIA</strong></h2>
+ *   <h3 ...><strong>1. ¿Cuánto está dispuesto a invertir?</strong></h3>
+ *     <p>(10 mins.)</p>
+ *     <p>bullet...</p>
+ *   <h3 ...><strong>2. Busquemos perlas escondidas</strong></h3>
+ *   ...
+ *   <h2 ...><strong>SEAMOS MEJORES MAESTROS</strong></h2>
+ *   ...
+ *   <h2 ...><strong>NUESTRA VIDA CRISTIANA</strong></h2>
+ */
+function parseMeetingHtml(html: string): MeetingPart[] {
+  // Extract the <article> body
+  const articleMatch = html.match(/id="article"[^>]*>([\s\S]*?)<\/article>/);
+  if (!articleMatch) return [];
+  const article = articleMatch[1];
+
+  const SECTIONS: Record<string, string> = {
+    "TESOROS DE LA BIBLIA": "TESOROS DE LA BIBLIA",
+    "SEAMOS MEJORES MAESTROS": "SEAMOS MEJORES MAESTROS",
+    "NUESTRA VIDA CRISTIANA": "NUESTRA VIDA CRISTIANA",
+  };
+
+  const parts: MeetingPart[] = [];
+  let currentSection = "";
+  let orderNum = 0;
+
+  // Collect all h2 and h3 with their positions
+  const headingRe = /<h([23])([^>]*)>([\s\S]*?)<\/h\1>/g;
+  const headings: Array<{
+    level: number;
+    html: string;
+    text: string;
+    start: number;
+    end: number;
+  }> = [];
+
+  let hm: RegExpExecArray | null;
+  while ((hm = headingRe.exec(article)) !== null) {
+    headings.push({
+      level: parseInt(hm[1]),
+      html: hm[0],
+      text: stripTags(hm[3]),
+      start: hm.index,
+      end: hm.index + hm[0].length,
+    });
+  }
+
+  for (let i = 0; i < headings.length; i++) {
+    const h = headings[i];
+    const nextStart = headings[i + 1]?.start ?? article.length;
+    const contentBetween = article.substring(h.end, nextStart);
+
+    if (h.level === 2) {
+      // Detect section change
+      for (const key of Object.keys(SECTIONS)) {
+        if (h.text.includes(key)) {
+          currentSection = SECTIONS[key];
+          break;
+        }
+      }
+      continue;
+    }
+
+    if (h.level === 3 && currentSection) {
+      // Duration: extract "(X mins.)"
+      const durMatch = contentBetween.match(/\((\d+\s*mins?\.)\)/);
+      const duration = durMatch ? ` (${durMatch[1]})` : "";
+
+      // Title: strip existing duration from h3 text then append clean one
+      const titleBase = h.text.replace(/\(\d+\s*mins?\.\)/g, "").trim();
+      const title = titleBase + duration;
+
+      // Content: strip tags, remove textarea labels
+      let content = stripTags(contentBetween)
+        .replace(/\(\d+\s*mins?\.\)\s*/g, "")
+        .replace(/\bRespuesta\b/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      // Bible refs from this part's HTML
+      const bibleTexts = extractBibleRefs(contentBetween);
+
+      orderNum++;
+      parts.push({
+        section: currentSection,
+        order_num: orderNum,
+        title,
+        content,
+        bible_texts: bibleTexts,
+      });
+    }
+  }
+
+  // Song/prayer items are h3-level in WOL and will be picked up as parts.
+  // Filter them out from sections they don't belong to, but keep meaningful ones.
+  return parts;
+}
+
+/**
+ * Main entry point: fetch and parse the WOL meeting content for the given
+ * week start date (YYYY-MM-DD, Monday).
  */
 export async function generateMeetingContent(
   startDate: string
 ): Promise<MeetingPart[]> {
-  const schedule = getWeekSchedule(startDate);
-  const bibleReading = schedule?.bibleReading ?? null;
+  const date = parseISO(startDate);
+  const year = getISOWeekYear(date);
+  const isoWeek = getISOWeek(date);
 
-  const lecturaTitle = bibleReading
-    ? `Lectura de la Biblia (${bibleReading})`
-    : "Lectura de la Biblia (ver programa de la semana)";
+  // 1. Get the WOL document path for this week
+  const docPath = await getMeetingDocPath(year, isoWeek);
+  if (!docPath) return [];
 
-  const readingInstruction = bibleReading
-    ? `La lectura bíblica OFICIAL de esta semana es: ${bibleReading}.`
-    : "Usa la lectura bíblica asignada para esta semana.";
+  // 2. Fetch the document HTML
+  const html = await fetchDocHtml(docPath);
+  if (!html) return [];
 
-  const prompt = `Genera el programa COMPLETO de la reunión "Vida y ministerio cristiano" para la semana del ${startDate}, siguiendo la estructura EXACTA de la Guía de Actividades de jw.org.
+  // 3. Parse into structured parts
+  const parts = parseMeetingHtml(html);
 
-LECTURA BÍBLICA DE ESTA SEMANA: ${bibleReading ?? "(ver Guía de Actividades)"}
-
-Devuelve SOLO un JSON array con EXACTAMENTE esta estructura:
-
-[
-  {
-    "section": "TESOROS DE LA BIBLIA",
-    "title": "Discurso: [título del tema] (10 min)",
-    "content": "INTRODUCCIÓN:\\n[Párrafo de introducción que capte la atención]\\n\\nDESARROLLO:\\n[Desarrollo completo del tema con puntos claros, explicaciones y aplicaciones prácticas. Debe durar aproximadamente 10 minutos al leerlo (~1300 palabras). Incluir referencias a los textos bíblicos de forma natural.]\\n\\nCONCLUSIÓN:\\n[Párrafo de conclusión que resuma y motive]",
-    "bible_texts": [{"reference": "Libro cap:vers", "text": "Texto COMPLETO del versículo", "translation": "NWT"}]
-  },
-  {
-    "section": "TESOROS DE LA BIBLIA",
-    "title": "Busquemos perlas escondidas (10 min)",
-    "content": "PARTE A — PREGUNTA:\\n[Escribir la pregunta]\\n\\nRESPUESTA:\\n[Respuesta clara y desarrollada basada en los textos bíblicos]\\n\\nPARTE B — ENSEÑANZAS DE LA LECTURA BÍBLICA SEMANAL (${bibleReading ?? "lectura de la semana"}):\\n\\n1. [Texto bíblico 1 de ${bibleReading ?? "la lectura"}] — [Enseñanza y aplicación práctica]\\n\\n2. [Texto bíblico 2 de ${bibleReading ?? "la lectura"}] — [Enseñanza y aplicación práctica]\\n\\n3. [Texto bíblico 3 de ${bibleReading ?? "la lectura"}] — [Enseñanza y aplicación práctica]",
-    "bible_texts": [{"reference": "...", "text": "Texto completo", "translation": "NWT"}, {"reference": "...", "text": "Texto completo", "translation": "NWT"}, {"reference": "...", "text": "Texto completo", "translation": "NWT"}]
-  },
-  {
-    "section": "TESOROS DE LA BIBLIA",
-    "title": "${lecturaTitle}",
-    "content": "",
-    "bible_texts": []
-  },
-  {
-    "section": "SEAMOS MEJORES MAESTROS",
-    "title": "[Tipo de asignación]: [Tema] ([X] min)",
-    "content": "OBJETIVO: [Objetivo claro del ejercicio]\\n\\nGUIÓN:\\n[Guion estructurado y completo para representar la asignación. Incluir diálogos si aplica. Ajustado al tiempo indicado.]\\n\\nSUGERENCIAS:\\n- [Sugerencia para cumplir bien la asignación]\\n- [Otra sugerencia]",
-    "bible_texts": [{"reference": "...", "text": "Texto completo", "translation": "NWT"}]
-  },
-  {
-    "section": "SEAMOS MEJORES MAESTROS",
-    "title": "[Segunda asignación] ([X] min)",
-    "content": "OBJETIVO: [...]\\n\\nGUIÓN:\\n[...]\\n\\nSUGERENCIAS:\\n[...]",
-    "bible_texts": []
-  },
-  {
-    "section": "SEAMOS MEJORES MAESTROS",
-    "title": "[Tercera asignación] ([X] min)",
-    "content": "OBJETIVO: [...]\\n\\nGUIÓN:\\n[...]\\n\\nSUGERENCIAS:\\n[...]",
-    "bible_texts": []
-  },
-  {
-    "section": "NUESTRA VIDA CRISTIANA",
-    "title": "[Tema] ([X] min)",
-    "content": "[Desarrollo completo del tema. Si hay preguntas, incluirlas con sus respuestas claras y bien estructuradas. Añadir textos bíblicos completos.]",
-    "bible_texts": [{"reference": "...", "text": "Texto completo", "translation": "NWT"}]
-  },
-  {
-    "section": "NUESTRA VIDA CRISTIANA",
-    "title": "Estudio bíblico de congregación (30 min)",
-    "content": "[Resumen del tema del estudio bíblico de congregación con puntos principales y textos clave.]",
-    "bible_texts": [{"reference": "...", "text": "Texto completo", "translation": "NWT"}]
-  }
-]
-
-REGLAS OBLIGATORIAS:
-- ${readingInstruction}
-- La sección "Lectura de la Biblia" DEBE tener el título EXACTO: "${lecturaTitle}" y content vacío
-- Perlas escondidas Parte B DEBE basarse en versículos de ${bibleReading ?? "la lectura bíblica de la semana"} — NO uses otros libros bíblicos
-- NO inventes una lectura bíblica diferente. La lectura es: ${bibleReading ?? "la asignada para esta semana"}
-- Incluye los textos bíblicos COMPLETOS (no solo la referencia)
-- El discurso de Tesoros debe ser extenso (~1300 palabras) para cubrir 10 minutos
-- Las asignaciones de Seamos Mejores Maestros deben tener guion listo para representar
-- NO copies texto literal de publicaciones con derechos de autor
-- Responde SOLO con el JSON array`;
-
-  const result = await generateWithClaude(
-    "Eres un asistente de estudio bíblico experto. Genera contenido que siga EXACTAMENTE la estructura de la reunión 'Vida y ministerio cristiano' de los Testigos de Jehová. El contenido debe ser original, claro, respetuoso y basado en la Biblia. La lectura bíblica de la semana está indicada en el prompt — úsala exactamente, no la inventes.",
-    prompt
-  );
-
-  try {
-    const jsonMatch = result.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [];
-
-    const parsed = JSON.parse(jsonMatch[0]) as Array<{
-      section: string;
-      title: string;
-      content: string;
-      bible_texts: BibleText[];
-    }>;
-
-    return parsed.map((item, i) => ({
-      section: item.section,
-      order_num: i + 1,
-      title: item.title,
-      content: item.content || "",
-      bible_texts: item.bible_texts || [],
-    }));
-  } catch {
-    return [];
-  }
+  return parts;
 }
